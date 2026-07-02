@@ -62,7 +62,7 @@ def train_candidate(individual: dict, input_dim: int, train_dataset: TensorDatas
     stream_ctx = torch.cuda.stream(stream) if stream is not None else contextlib.nullcontext()
 
     with stream_ctx:
-        loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
+        loader = DataLoader(train_dataset, batch_size=cfg.NAS_BATCH_SIZE, shuffle=True)
         model = ScorePredictorNet(input_dim, individual["n_layers"], individual["hidden_size"],
                                    individual["dropout"], individual["activation"]).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=individual["lr"])
