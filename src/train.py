@@ -35,7 +35,7 @@ def train_final_model(X_train, y_train, X_val, y_val, input_dim, individual_conf
 
     train_ds = TensorDataset(torch.tensor(X_train, dtype=torch.float32),
                               torch.tensor(y_train, dtype=torch.float32))
-    train_loader = DataLoader(train_ds, batch_size=256, shuffle=True)
+    train_loader = DataLoader(train_ds, batch_size=cfg.NAS_BATCH_SIZE, shuffle=True)
     val_X = torch.tensor(X_val, dtype=torch.float32).to(device)
     val_y = torch.tensor(y_val, dtype=torch.float32).to(device)
 
