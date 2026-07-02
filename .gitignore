@@ -1,0 +1,7 @@
+data/*.csv
+models/*.pt
+logs/*.jsonl
+kaggle.json
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
