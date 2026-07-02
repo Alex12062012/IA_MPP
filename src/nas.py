@@ -14,6 +14,8 @@ import json
 import time
 import random
 import os
+import contextlib
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import torch
 from torch.utils.data import TensorDataset, DataLoader
@@ -48,43 +50,74 @@ def crossover(parent_a: dict, parent_b: dict) -> dict:
     return {k: random.choice([parent_a[k], parent_b[k]]) for k in parent_a}
 
 
-def train_candidate(individual: dict, input_dim: int, train_loader, val_X, val_y,
+def train_candidate(individual: dict, input_dim: int, train_dataset: TensorDataset, val_X, val_y,
                      epochs=cfg.NAS_EPOCHS_PER_CANDIDATE, patience=cfg.NAS_EARLY_STOPPING_PATIENCE):
-    """Entraîne un candidat avec early stopping. Retourne (fitness = -val_nll, state_dict)."""
-    model = ScorePredictorNet(input_dim, individual["n_layers"], individual["hidden_size"],
-                               individual["dropout"], individual["activation"]).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=individual["lr"])
+    """Entraîne un candidat avec early stopping. Retourne (fitness = -val_nll, state_dict, individual).
+    Prend un TensorDataset (pas un DataLoader partagé) : chaque appel (potentiellement dans un
+    thread séparé, voir train_population_parallel) crée son propre DataLoader pour éviter les
+    conflits d'itérateur entre threads."""
+    # CUDA stream dédié : permet à plusieurs candidats de tourner en parallèle sur le même GPU
+    # au lieu de se mettre en file (le réseau est petit, le GPU était sous-utilisé en séquentiel).
+    stream = torch.cuda.Stream() if torch.cuda.is_available() else None
+    stream_ctx = torch.cuda.stream(stream) if stream is not None else contextlib.nullcontext()
 
-    best_val_nll = float("inf")
-    best_state = None
-    patience_counter = 0
+    with stream_ctx:
+        loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
+        model = ScorePredictorNet(input_dim, individual["n_layers"], individual["hidden_size"],
+                                   individual["dropout"], individual["activation"]).to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=individual["lr"])
 
-    for epoch in range(epochs):
-        model.train()
-        for xb, yb in train_loader:
-            xb, yb = xb.to(device), yb.to(device)
-            optimizer.zero_grad()
-            pred = model(xb)
-            loss = poisson_nll_loss(pred, yb)
-            loss.backward()
-            optimizer.step()
+        best_val_nll = float("inf")
+        best_state = None
+        patience_counter = 0
 
-        model.eval()
-        with torch.no_grad():
-            val_pred = model(val_X.to(device))
-            val_nll = poisson_nll_loss(val_pred, val_y.to(device)).item()
+        for epoch in range(epochs):
+            model.train()
+            for xb, yb in loader:
+                xb, yb = xb.to(device, non_blocking=True), yb.to(device, non_blocking=True)
+                optimizer.zero_grad()
+                pred = model(xb)
+                loss = poisson_nll_loss(pred, yb)
+                loss.backward()
+                optimizer.step()
 
-        if val_nll < best_val_nll:
-            best_val_nll = val_nll
-            best_state = {k: v.clone() for k, v in model.state_dict().items()}
-            patience_counter = 0
-        else:
-            patience_counter += 1
-            if patience_counter >= patience:
-                break  # early stopping
+            model.eval()
+            with torch.no_grad():
+                val_pred = model(val_X.to(device, non_blocking=True))
+                val_nll = poisson_nll_loss(val_pred, val_y.to(device, non_blocking=True)).item()
+
+            if val_nll < best_val_nll:
+                best_val_nll = val_nll
+                best_state = {k: v.clone() for k, v in model.state_dict().items()}
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                if patience_counter >= patience:
+                    break  # early stopping
+
+        if stream is not None:
+            stream.synchronize()
 
     fitness = -best_val_nll  # fitness plus haute = mieux (on minimise la NLL)
     return fitness, best_state, individual
+
+
+def train_population_parallel(population, input_dim, train_dataset, val_X, val_y,
+                               max_workers=cfg.NAS_PARALLEL_WORKERS):
+    """Entraîne toute une génération de candidats en parallèle (threads + CUDA streams).
+    Remplace la boucle séquentielle — gros gain de vitesse quand le GPU est sous-utilisé
+    par un modèle aussi petit (observé ~14% d'utilisation en séquentiel)."""
+    results = [None] * len(population)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(train_candidate, ind, input_dim, train_dataset, val_X, val_y): i
+            for i, ind in enumerate(population)
+        }
+        for future in futures:
+            i = futures[future]
+            fitness, state, ind = future.result()
+            results[i] = (fitness, ind, state)
+    return results
 
 
 def save_checkpoint(path, generation, population, fitnesses, best_ever):
@@ -128,7 +161,6 @@ def run_nas(X_train, y_train, X_val, y_val, input_dim,
 
     train_ds = TensorDataset(torch.tensor(X_train, dtype=torch.float32),
                               torch.tensor(y_train, dtype=torch.float32))
-    train_loader = DataLoader(train_ds, batch_size=256, shuffle=True)
     val_X = torch.tensor(X_val, dtype=torch.float32)
     val_y = torch.tensor(y_val, dtype=torch.float32)
 
@@ -152,10 +184,7 @@ def run_nas(X_train, y_train, X_val, y_val, input_dim,
             break
 
         gen_start = time.time()
-        results = []
-        for individual in population:
-            fitness, state, ind = train_candidate(individual, input_dim, train_loader, val_X, val_y)
-            results.append((fitness, ind, state))
+        results = train_population_parallel(population, input_dim, train_ds, val_X, val_y)
 
         results.sort(key=lambda r: r[0], reverse=True)
         fitnesses = [r[0] for r in results]
