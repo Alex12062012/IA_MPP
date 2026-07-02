@@ -91,6 +91,12 @@ NAS_EARLY_STOPPING_PATIENCE = 12
 NAS_TIME_BUDGET_SECONDS = 11 * 3600  # marge de sécu avant que Colab tue la session (~12h max)
 NAS_CHECKPOINT_EVERY_N_GEN = 1
 
+# Entraîne plusieurs candidats EN PARALLÈLE sur le même GPU (threads + CUDA streams).
+# Le GPU était sous-utilisé (~14%) en séquentiel car le réseau est minuscule — le paralléliser
+# comble le temps mort entre kernels. Ajuste selon la VRAM dispo (8 est safe sur un T4 15GB
+# pour ce genre de petit MLP).
+NAS_PARALLEL_WORKERS = 8
+
 # --- Réentraînement incrémental (après chaque journée) ---
 INCREMENTAL_EPOCHS = 15
 INCREMENTAL_LR = 5e-4
