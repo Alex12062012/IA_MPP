@@ -79,13 +79,16 @@ NAS_SEARCH_SPACE = {
     "lr": [1e-2, 5e-3, 1e-3],
 }
 
-# Profil "nuit complète" (~10-12h) — voir README pour ajuster
-NAS_POPULATION_SIZE = 120
-NAS_ELITE_SIZE = 12
-NAS_N_GENERATIONS = 60
-NAS_EPOCHS_PER_CANDIDATE = 40          # avec early stopping, rarement atteint en entier
-NAS_EARLY_STOPPING_PATIENCE = 8
-NAS_TIME_BUDGET_SECONDS = 11 * 3600    # coupe proprement avant la fin de la nuit (marge de sécu)
+# Profil "recherche qualitative multi-nuits" — pensé pour tourner sur plusieurs sessions
+# (reprise automatique via checkpoint à chaque relance, resume=True). Pas de raccourci sur la
+# qualité : population large, patience généreuse, on relance chaque nuit jusqu'à ce que la
+# fitness plafonne dans les logs (voir README).
+NAS_POPULATION_SIZE = 150
+NAS_ELITE_SIZE = 15
+NAS_N_GENERATIONS = 300              # volontairement haut, le budget temps arrête avant si besoin
+NAS_EPOCHS_PER_CANDIDATE = 60
+NAS_EARLY_STOPPING_PATIENCE = 12
+NAS_TIME_BUDGET_SECONDS = 11 * 3600  # marge de sécu avant que Colab tue la session (~12h max)
 NAS_CHECKPOINT_EVERY_N_GEN = 1
 
 # --- Réentraînement incrémental (après chaque journée) ---
