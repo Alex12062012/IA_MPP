@@ -97,6 +97,11 @@ NAS_CHECKPOINT_EVERY_N_GEN = 1
 # pour ce genre de petit MLP).
 NAS_PARALLEL_WORKERS = 8
 
+# Batch size volontairement gros : le modèle est minuscule, le vrai coût n'est pas le calcul
+# GPU mais l'overhead Python/dispatch répété à chaque mini-lot. Avec 228k lignes de train,
+# batch=256 -> ~894 itérations/epoch (lent). batch=8192 -> ~28 itérations/epoch (~30x moins).
+NAS_BATCH_SIZE = 8192
+
 # --- Réentraînement incrémental (après chaque journée) ---
 INCREMENTAL_EPOCHS = 15
 INCREMENTAL_LR = 5e-4
