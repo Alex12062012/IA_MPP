@@ -24,17 +24,17 @@ KAGGLE_INTL_DATASET = "martj42/international-football-results-from-1872-to-2017"
 # --- Mapping de colonnes attendu pour le dataset "club" ---
 # NOTE: à vérifier/corriger après le premier chargement réel (voir data_pipeline.inspect_columns)
 CLUB_COLUMN_MAP = {
-    "date": "date",
-    "home_team": "home_team",
-    "away_team": "away_team",
-    "home_goals": "home_goals",
-    "away_goals": "away_goals",
-    "home_odds": "home_odds",       # cote victoire domicile
-    "draw_odds": "draw_odds",
-    "away_odds": "away_odds",
-    "home_elo": "home_elo",         # optionnel, peut être absent -> géré en fallback
-    "away_elo": "away_elo",
-    "league": "league",
+    "date": "MatchDate",
+    "home_team": "HomeTeam",
+    "away_team": "AwayTeam",
+    "home_goals": "FTHome",
+    "away_goals": "FTAway",
+    "home_odds": "OddHome",
+    "draw_odds": "OddDraw",
+    "away_odds": "OddAway",
+    "home_elo": "HomeElo",
+    "away_elo": "AwayElo",
+    "league": "Division",
 }
 
 INTL_COLUMN_MAP = {
